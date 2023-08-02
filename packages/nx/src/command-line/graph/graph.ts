@@ -1,34 +1,44 @@
-import { workspaceRoot } from '../../utils/workspace-root';
 import { createHash } from 'crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { copySync, ensureDirSync } from 'fs-extra';
 import * as http from 'http';
+import * as minimatch from 'minimatch';
+import { URL } from 'node:url';
 import * as open from 'open';
 import { basename, dirname, extname, isAbsolute, join, parse } from 'path';
 import { performance } from 'perf_hooks';
-import { URL } from 'node:url';
 import { readNxJson, workspaceLayout } from '../../config/configuration';
-import { output } from '../../utils/output';
-import { writeJsonFile } from '../../utils/fileutils';
 import {
   ProjectFileMap,
   ProjectGraph,
   ProjectGraphDependency,
   ProjectGraphProjectNode,
 } from '../../config/project-graph';
+import { writeJsonFile } from '../../utils/fileutils';
+import { output } from '../../utils/output';
+import { workspaceRoot } from '../../utils/workspace-root';
+
+import { Server } from 'net';
+import { NxJsonConfiguration } from '../../config/nx-json';
+import { FileData } from '../../config/project-graph';
+import { TaskGraph } from '../../config/task-graph';
+import { daemonClient } from '../../daemon/client/client';
+import { fileHasher } from '../../hasher/file-hasher';
+import {
+  expandNamedInput,
+  filterUsingGlobPatterns,
+  getInputs,
+} from '../../hasher/task-hasher';
+import { readProjectFileMapCache } from '../../project-graph/nx-deps-cache';
 import { pruneExternalNodes } from '../../project-graph/operators';
 import { createProjectGraphAsync } from '../../project-graph/project-graph';
 import {
   createTaskGraphWithPlan,
   mapTargetDefaultsToDependencies,
 } from '../../tasks-runner/create-task-graph';
-import { TaskGraph } from '../../config/task-graph';
-import { daemonClient } from '../../daemon/client/client';
-import { Server } from 'net';
-import { readProjectFileMapCache } from '../../project-graph/nx-deps-cache';
-import { fileHasher } from '../../hasher/file-hasher';
-import { getAffectedGraphNodes } from '../affected/affected';
+import { allFileData } from '../../utils/all-file-data';
 import { splitArgsIntoNxArgsAndOverrides } from '../../utils/command-line-utils';
+import { getAffectedGraphNodes } from '../affected/affected';
 
 export interface ProjectGraphClientResponse {
   hash: string;
@@ -470,6 +480,7 @@ async function startServer(
       const projects = parsedUrl.searchParams.get('projects')?.split(',');
       res.writeHead(200, { 'Content-Type': 'application/json' });
       const inputs = await getExpandedTaskInputs(target, projects);
+      console.log('----- AFTER EXPANSION ------');
       console.log(inputs);
       res.end(JSON.stringify(inputs));
       return;
@@ -737,6 +748,11 @@ async function getExpandedTaskInputs(
   projects: string[]
 ): Promise<Record<string, string[]>> {
   const taskGraphs = await createTaskGraphClientResponse();
+  const projectGraph = await createProjectGraphAsync({ exitOnError: false });
+
+  const allWorkspaceFiles = await allFileData();
+  const nxJson = readNxJson();
+
   const expandedInputs: Record<string, string[]> = {};
   projects.forEach((project) => {
     const taskGraphId = `${project}:${target}`;
@@ -750,12 +766,96 @@ async function getExpandedTaskInputs(
     for (let taskName in taskGraph.tasks) {
       const task = taskGraph.tasks[taskName];
       if (task.inputs) {
-        expandedInputs[taskName] = task.inputs;
+        console.log('---- BEFORE EXPANSION -------');
+
+        console.log('naive inputs', task.inputs);
+        expandedInputs[taskName] = expandInputs(
+          task.inputs,
+          currentDepGraphClientResponse.projects.find(
+            (p) => p.name === project
+          ),
+          allWorkspaceFiles,
+          nxJson
+        );
       }
     }
   });
 
   return expandedInputs;
+}
+
+function expandInputs(
+  inputs: string[],
+  project: ProjectGraphProjectNode,
+  allWorkspaceFiles: FileData[],
+  nxJson: NxJsonConfiguration
+) {
+  const namedInputData = {
+    default: [{ fileset: '{projectRoot}/**/*' }],
+    ...nxJson.namedInputs,
+    ...project.data.namedInputs,
+  };
+
+  const workspaceRootInputs = [];
+  const projectRootInputs = [];
+  const namedInputs = [];
+  const otherInputs = [];
+  inputs.forEach((input) => {
+    if (input.startsWith('{workspaceRoot}')) {
+      workspaceRootInputs.push(input);
+      return;
+    }
+    if (input.startsWith(`${project.name}:`)) {
+      projectRootInputs.push(input);
+      return;
+    }
+    if (namedInputData[input]) {
+      namedInputs.push(input);
+    }
+    otherInputs.push(input);
+  });
+  const workspaceRootsExpanded = workspaceRootInputs.flatMap((input) => {
+    const matches = [];
+    const withoutWorkspaceRoot = input.substring(16);
+    const matchingFile = allWorkspaceFiles.find(
+      (t) => t.file === withoutWorkspaceRoot
+    );
+    if (matchingFile) {
+      matches.push(matchingFile.file);
+    } else {
+      allWorkspaceFiles
+        .filter((f) => minimatch(f.file, withoutWorkspaceRoot))
+        .forEach((f) => {
+          matches.push(f.file);
+        });
+    }
+    return matches;
+  });
+
+  const projectRootsExpanded = projectRootInputs.flatMap((input) => {
+    if (!input.startsWith(`${project.name}:`)) {
+      return;
+    }
+    const fileSets = input.replace(`${project.name}:`, '').split(',');
+    return filterUsingGlobPatterns(
+      project.data.root,
+      currentDepGraphClientResponse.fileMap[project.name],
+      fileSets
+    ).map((f) => f.file);
+  });
+
+  const namedInputsExpanded = namedInputs.flatMap((input) => {
+    const expandedInputs = expandNamedInput(input, namedInputData);
+    console.log(expandedInputs);
+    return [];
+  });
+
+  return [
+    ...workspaceRootsExpanded,
+    ...projectRootsExpanded,
+    ...namedInputsExpanded,
+    ...otherInputs,
+  ];
 }
 
 interface GraphJsonResponse {
