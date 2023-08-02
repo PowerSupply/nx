@@ -39,6 +39,7 @@ import {
 import { allFileData } from '../../utils/all-file-data';
 import { splitArgsIntoNxArgsAndOverrides } from '../../utils/command-line-utils';
 import { getAffectedGraphNodes } from '../affected/affected';
+import { getRootTsConfigPath } from '../../plugins/js/utils/typescript';
 
 export interface ProjectGraphClientResponse {
   hash: string;
@@ -637,10 +638,17 @@ async function createDepGraphClientResponse(
   };
 }
 
-async function createTaskGraphClientResponse(): Promise<TaskGraphClientResponse> {
-  let graph = pruneExternalNodes(
-    await createProjectGraphAsync({ exitOnError: true })
-  );
+async function createTaskGraphClientResponse(
+  pruneExternal: boolean = true
+): Promise<TaskGraphClientResponse> {
+  let graph: ProjectGraph;
+  if (pruneExternal) {
+    graph = pruneExternalNodes(
+      await createProjectGraphAsync({ exitOnError: true })
+    );
+  } else {
+    graph = await createProjectGraphAsync({ exitOnError: true });
+  }
 
   performance.mark('task graph generation:start');
 
@@ -747,35 +755,28 @@ async function getExpandedTaskInputs(
   target: string,
   projects: string[]
 ): Promise<Record<string, string[]>> {
-  const taskGraphs = await createTaskGraphClientResponse();
-  const projectGraph = await createProjectGraphAsync({ exitOnError: false });
+  const taskGraphs = await createTaskGraphClientResponse(false);
 
   const allWorkspaceFiles = await allFileData();
-  const nxJson = readNxJson();
 
   const expandedInputs: Record<string, string[]> = {};
   projects.forEach((project) => {
     const taskGraphId = `${project}:${target}`;
-    console.log(
-      'getting inputs for',
-      taskGraphId,
-      taskGraphs.taskGraphs[taskGraphId]
-    );
+
     const taskGraph = taskGraphs.taskGraphs[taskGraphId];
 
     for (let taskName in taskGraph.tasks) {
       const task = taskGraph.tasks[taskName];
       if (task.inputs) {
         console.log('---- BEFORE EXPANSION -------');
+        console.log('inputs', task.inputs);
 
-        console.log('naive inputs', task.inputs);
         expandedInputs[taskName] = expandInputs(
           task.inputs,
           currentDepGraphClientResponse.projects.find(
             (p) => p.name === project
           ),
-          allWorkspaceFiles,
-          nxJson
+          allWorkspaceFiles
         );
       }
     }
@@ -787,33 +788,41 @@ async function getExpandedTaskInputs(
 function expandInputs(
   inputs: string[],
   project: ProjectGraphProjectNode,
-  allWorkspaceFiles: FileData[],
-  nxJson: NxJsonConfiguration
+  allWorkspaceFiles: FileData[]
 ) {
-  const namedInputData = {
-    default: [{ fileset: '{projectRoot}/**/*' }],
-    ...nxJson.namedInputs,
-    ...project.data.namedInputs,
-  };
+  const projectNames = currentDepGraphClientResponse.projects.map(
+    (p) => p.name
+  );
 
-  const workspaceRootInputs = [];
-  const projectRootInputs = [];
-  const namedInputs = [];
-  const otherInputs = [];
+  const workspaceRootInputs: string[] = [];
+  const projectRootInputs: string[] = [];
+  const externalInputs: string[] = [];
+  const otherInputs: string[] = [];
   inputs.forEach((input) => {
     if (input.startsWith('{workspaceRoot}')) {
       workspaceRootInputs.push(input);
       return;
     }
-    if (input.startsWith(`${project.name}:`)) {
+    const maybeProjectName = input.split(':')[0];
+    if (projectNames.includes(maybeProjectName)) {
       projectRootInputs.push(input);
       return;
     }
-    if (namedInputData[input]) {
-      namedInputs.push(input);
+    if (
+      input === 'ProjectConfiguration' ||
+      input === 'TsConfig' ||
+      input === 'AllExternalDependencies'
+    ) {
+      otherInputs.push(input);
+      return;
     }
-    otherInputs.push(input);
+    // there shouldn't be any other imports in here, but external ones are always going to have a modifier in front
+    if (input.includes(':')) {
+      externalInputs.push(input);
+      return;
+    }
   });
+
   const workspaceRootsExpanded = workspaceRootInputs.flatMap((input) => {
     const matches = [];
     const withoutWorkspaceRoot = input.substring(16);
@@ -832,29 +841,42 @@ function expandInputs(
     return matches;
   });
 
-  const projectRootsExpanded = projectRootInputs.flatMap((input) => {
-    if (!input.startsWith(`${project.name}:`)) {
-      return;
-    }
-    const fileSets = input.replace(`${project.name}:`, '').split(',');
-    return filterUsingGlobPatterns(
-      project.data.root,
-      currentDepGraphClientResponse.fileMap[project.name],
-      fileSets
-    ).map((f) => f.file);
+  const projectRootsExpanded = projectRootInputs.map((input) => {
+    const fileSetProjectName = input.split(':')[0];
+    const fileSetProject = currentDepGraphClientResponse.projects.find(
+      (p) => p.name === fileSetProjectName
+    );
+    const fileSets = input.replace(`${fileSetProjectName}:`, '').split(',');
+
+    return {
+      [fileSetProject.name]: filterUsingGlobPatterns(
+        fileSetProject.data.root,
+        currentDepGraphClientResponse.fileMap[fileSetProject.name],
+        fileSets
+      ).map((f) => f.file),
+    };
   });
 
-  const namedInputsExpanded = namedInputs.flatMap((input) => {
-    const expandedInputs = expandNamedInput(input, namedInputData);
-    console.log(expandedInputs);
-    return [];
+  const otherInputsExpanded = otherInputs.map((input) => {
+    if (input === 'TsConfig') {
+      return getRootTsConfigPath();
+    }
+    if (input === 'ProjectConfiguration') {
+      return currentDepGraphClientResponse.fileMap[project.name].find(
+        (file) =>
+          file.file === `${project.data.root}/project.json` ||
+          file.file === `${project.data.root}/package.json`
+      ).file;
+    }
+
+    return input;
   });
 
   return [
     ...workspaceRootsExpanded,
+    ...otherInputsExpanded,
     ...projectRootsExpanded,
-    ...namedInputsExpanded,
-    ...otherInputs,
+    { external: externalInputs },
   ];
 }
 

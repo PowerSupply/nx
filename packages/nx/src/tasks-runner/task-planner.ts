@@ -284,7 +284,7 @@ export class TaskPlanner {
       }
     }
     // not found, just return the package name
-    return packageName;
+    return `external:${packageName}`;
   }
 
   private singleProjectInputs(
