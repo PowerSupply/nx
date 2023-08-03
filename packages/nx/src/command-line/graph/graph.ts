@@ -481,10 +481,9 @@ async function startServer(
 
       performance.mark('task input generation:end');
 
-      const target = parsedUrl.searchParams.get('target');
-      const projects = parsedUrl.searchParams.get('projects')?.split(',');
+      const taskId = parsedUrl.searchParams.get('taskId');
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      const inputs = await getExpandedTaskInputs(target, projects);
+      const inputs = await getExpandedTaskInputs(taskId);
       res.end(JSON.stringify(inputs));
       const perf = performance.measure(
         'task input generation',
@@ -760,41 +759,30 @@ function createTaskId(
 }
 
 async function getExpandedTaskInputs(
-  target: string,
-  projects: string[]
+  taskId: string
 ): Promise<Record<string, string[]>> {
+  const [project, target] = taskId.split(':');
   const taskGraphs = await createTaskGraphClientResponse(false);
 
   const allWorkspaceFiles = await allFileData();
 
-  const expandedInputs: Record<string, string[]> = {};
-  projects.forEach((project) => {
-    const taskGraphId = `${project}:${target}`;
-
-    const taskGraph = taskGraphs.taskGraphs[taskGraphId];
-
-    for (let taskName in taskGraph.tasks) {
-      const task = taskGraph.tasks[taskName];
-      if (task.inputs) {
-        expandedInputs[taskName] = expandInputs(
-          task.inputs,
-          currentDepGraphClientResponse.projects.find(
-            (p) => p.name === project
-          ),
-          allWorkspaceFiles
-        );
-      }
-    }
-  });
-
-  return expandedInputs;
+  const taskGraph = taskGraphs.taskGraphs[taskId];
+  const task = taskGraph.tasks[taskId];
+  if (task.inputs) {
+    return expandInputs(
+      task.inputs,
+      currentDepGraphClientResponse.projects.find((p) => p.name === project),
+      allWorkspaceFiles
+    );
+  }
+  return {};
 }
 
 function expandInputs(
   inputs: string[],
   project: ProjectGraphProjectNode,
   allWorkspaceFiles: FileData[]
-) {
+): Record<string, string[]> {
   const projectNames = currentDepGraphClientResponse.projects.map(
     (p) => p.name
   );
@@ -828,39 +816,25 @@ function expandInputs(
     }
   });
 
-  const workspaceRootsExpanded = workspaceRootInputs.flatMap((input) => {
-    const matches = [];
-    const withoutWorkspaceRoot = input.substring(16);
-    const matchingFile = allWorkspaceFiles.find(
-      (t) => t.file === withoutWorkspaceRoot
-    );
-    if (matchingFile) {
-      matches.push(matchingFile.file);
-    } else {
-      allWorkspaceFiles
-        .filter((f) => minimatch(f.file, withoutWorkspaceRoot))
-        .forEach((f) => {
-          matches.push(f.file);
-        });
+  const workspaceRootsExpanded: string[] = workspaceRootInputs.flatMap(
+    (input) => {
+      const matches = [];
+      const withoutWorkspaceRoot = input.substring(16);
+      const matchingFile = allWorkspaceFiles.find(
+        (t) => t.file === withoutWorkspaceRoot
+      );
+      if (matchingFile) {
+        matches.push(matchingFile.file);
+      } else {
+        allWorkspaceFiles
+          .filter((f) => minimatch(f.file, withoutWorkspaceRoot))
+          .forEach((f) => {
+            matches.push(f.file);
+          });
+      }
+      return matches;
     }
-    return matches;
-  });
-
-  const projectRootsExpanded = projectRootInputs.map((input) => {
-    const fileSetProjectName = input.split(':')[0];
-    const fileSetProject = currentDepGraphClientResponse.projects.find(
-      (p) => p.name === fileSetProjectName
-    );
-    const fileSets = input.replace(`${fileSetProjectName}:`, '').split(',');
-
-    return {
-      [fileSetProject.name]: filterUsingGlobPatterns(
-        fileSetProject.data.root,
-        currentDepGraphClientResponse.fileMap[fileSetProject.name],
-        fileSets
-      ).map((f) => f.file),
-    };
-  });
+  );
 
   const otherInputsExpanded = otherInputs.map((input) => {
     if (input === 'TsConfig') {
@@ -877,12 +851,34 @@ function expandInputs(
     return input;
   });
 
-  return [
-    ...workspaceRootsExpanded,
-    ...otherInputsExpanded,
+  const projectRootsExpanded = projectRootInputs
+    .map((input) => {
+      const fileSetProjectName = input.split(':')[0];
+      const fileSetProject = currentDepGraphClientResponse.projects.find(
+        (p) => p.name === fileSetProjectName
+      );
+      const fileSets = input.replace(`${fileSetProjectName}:`, '').split(',');
+
+      return {
+        [fileSetProject.name]: filterUsingGlobPatterns(
+          fileSetProject.data.root,
+          currentDepGraphClientResponse.fileMap[fileSetProject.name],
+          fileSets
+        ).map((f) => f.file),
+      };
+    })
+    .reduce((curr, acc) => {
+      for (let key in curr) {
+        acc[key] = curr[key];
+      }
+      return acc;
+    }, {});
+
+  return {
+    general: [...workspaceRootsExpanded, ...otherInputsExpanded],
     ...projectRootsExpanded,
-    { external: externalInputs },
-  ];
+    external: externalInputs,
+  };
 }
 
 interface GraphJsonResponse {

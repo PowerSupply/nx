@@ -5,6 +5,7 @@ export interface TaskNodeTooltipProps {
   id: string;
   executor: string;
   description?: string;
+  inputs?: Record<string, string[]>;
 
   children?: ReactNode | ReactNode[];
 }

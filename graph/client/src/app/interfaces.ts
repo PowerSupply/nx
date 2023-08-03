@@ -22,10 +22,7 @@ export interface ProjectGraphService {
   getHash: () => Promise<string>;
   getProjectGraph: (url: string) => Promise<ProjectGraphClientResponse>;
   getTaskGraph: (url: string) => Promise<TaskGraphClientResponse>;
-  getExpandedTaskInputs?: (
-    target: string,
-    projects: string[]
-  ) => Promise<Record<string, string[]>>;
+  getExpandedTaskInputs?: (taskId: string) => Promise<Record<string, string[]>>;
 }
 
 export interface Environment {

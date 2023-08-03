@@ -6,12 +6,13 @@ import {
   ProjectEdgeNodeTooltipProps,
 } from '@nx/graph/ui-tooltips';
 import { TooltipEvent } from './interfaces';
+import { GraphInteractionEvents } from './graph-interaction-events';
 
 export class GraphTooltipService {
   private subscribers: Set<Function> = new Set();
 
   constructor(graph: GraphService) {
-    graph.listen((event) => {
+    graph.listen((event: GraphInteractionEvents) => {
       switch (event.type) {
         case 'GraphRegenerated':
           this.hideAll();
@@ -31,6 +32,10 @@ export class GraphTooltipService {
           this.openTaskNodeTooltip(event.ref, {
             ...event.data,
           });
+          break;
+        case 'TaskInputsLoaded':
+          console.log(event);
+          this.openTaskNodeInputs(event.taskId, event.inputs);
           break;
         case 'EdgeClick':
           const callback =
@@ -64,6 +69,21 @@ export class GraphTooltipService {
   openTaskNodeTooltip(ref: VirtualElement, props: TaskNodeTooltipProps) {
     this.currentTooltip = { type: 'taskNode', ref, props };
     this.broadcastChange();
+  }
+
+  openTaskNodeInputs(taskId: string, inputs: Record<string, string[]>) {
+    if (
+      this.currentTooltip.type === 'taskNode' &&
+      this.currentTooltip.props.id === taskId
+    ) {
+      this.currentTooltip = {
+        ...this.currentTooltip,
+        props: {
+          ...this.currentTooltip.props,
+          inputs: inputs,
+        },
+      };
+    }
   }
 
   openEdgeToolTip(ref: VirtualElement, props: ProjectEdgeNodeTooltipProps) {

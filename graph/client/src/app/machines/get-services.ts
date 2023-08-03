@@ -2,6 +2,7 @@ import { interpret, InterpreterStatus } from 'xstate';
 import { projectGraphMachine } from '../feature-projects/machines/project-graph.machine';
 import { getGraphService } from './graph.service';
 import { GraphTooltipService } from '@nx/graph/ui-graph';
+import { getProjectGraphDataService } from '../hooks/get-project-graph-data-service';
 
 let projectGraphService = interpret(projectGraphMachine, {
   devTools: !!window.useXstateInspect,

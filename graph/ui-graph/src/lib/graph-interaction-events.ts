@@ -38,10 +38,17 @@ interface FileLinkClickEvent {
   file: string;
 }
 
+interface TaskInputsLoadedEvent {
+  type: 'TaskInputsLoaded';
+  taskId: string;
+  inputs: Record<string, string[]>;
+}
+
 export type GraphInteractionEvents =
   | ProjectNodeClickEvent
   | EdgeClickEvent
   | GraphRegeneratedEvent
   | TaskNodeClickEvent
   | BackgroundClickEvent
-  | FileLinkClickEvent;
+  | FileLinkClickEvent
+  | TaskInputsLoadedEvent;

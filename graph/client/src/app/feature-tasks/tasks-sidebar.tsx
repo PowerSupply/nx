@@ -1,10 +1,10 @@
-import { TaskList } from './task-list';
 import {
   useNavigate,
   useParams,
   useRouteLoaderData,
   useSearchParams,
 } from 'react-router-dom';
+import { TaskList } from './task-list';
 /* eslint-disable @nx/enforce-module-boundaries */
 // nx-ignore-next-line
 import type {
@@ -12,18 +12,18 @@ import type {
   TaskGraphClientResponse,
 } from 'nx/src/command-line/graph/graph';
 /* eslint-enable @nx/enforce-module-boundaries */
+import { useEffect, useMemo } from 'react';
 import { getGraphService } from '../machines/graph.service';
-import { useEffect, useMemo, useState } from 'react';
 import { CheckboxPanel } from '../ui-components/checkbox-panel';
 
 import { Dropdown } from '@nx/graph/ui-components';
-import { ShowHideAll } from '../ui-components/show-hide-all';
 import { useCurrentPath } from '../hooks/use-current-path';
+import { ShowHideAll } from '../ui-components/show-hide-all';
 import { createTaskName, useRouteConstructor } from '../util';
+import { GraphInteractionEvents } from '@nx/graph/ui-graph';
 import { getProjectGraphDataService } from '../hooks/get-project-graph-data-service';
 
 export function TasksSidebar() {
-  console.log('rerendering tasks sidebar');
   const graphService = getGraphService();
   const navigate = useNavigate();
   const params = useParams();
@@ -62,6 +62,19 @@ export function TasksSidebar() {
         : searchParams.get('projects')?.split(' ') ?? [],
     [allProjectsWithTargetAndNoErrors, searchParams, isAllRoute]
   );
+
+  graphService.listen(async (event: GraphInteractionEvents) => {
+    if (event.type === 'TaskNodeClick') {
+      const inputs = await getProjectGraphDataService()?.getExpandedTaskInputs(
+        event.data.id
+      );
+      graphService.broadcast({
+        type: 'TaskInputsLoaded',
+        taskId: event.data.id,
+        inputs,
+      });
+    }
+  });
 
   function selectTarget(target: string) {
     if (target === selectedTarget) return;

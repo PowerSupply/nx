@@ -33,15 +33,11 @@ export class FetchProjectGraphService implements ProjectGraphService {
   }
 
   async getExpandedTaskInputs(
-    target: string,
-    projects: string[]
+    taskId: string
   ): Promise<Record<string, string[]>> {
-    const request = new Request(
-      `task-inputs.json?target=${target}&projects=${projects.join(',')}`,
-      {
-        mode: 'no-cors',
-      }
-    );
+    const request = new Request(`task-inputs.json?taskId=${taskId}}`, {
+      mode: 'no-cors',
+    });
 
     const response = await fetch(request);
     return await response.json();
