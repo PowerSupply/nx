@@ -44,7 +44,6 @@ export class FetchProjectGraphService implements ProjectGraphService {
     );
 
     const response = await fetch(request);
-    console.log('response', response);
-    return response.json();
+    return await response.json();
   }
 }

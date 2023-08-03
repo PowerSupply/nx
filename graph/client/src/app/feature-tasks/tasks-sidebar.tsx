@@ -63,25 +63,6 @@ export function TasksSidebar() {
     [allProjectsWithTargetAndNoErrors, searchParams, isAllRoute]
   );
 
-  const [taskInputs, setTaskInputs] = useState(null);
-
-  useEffect(() => {
-    // Replace this with your actual data fetching logic
-    async function fetchTaskInputs() {
-      if (!selectedTarget || !selectedProjects.length) {
-        return;
-      }
-      const taskInputsData =
-        await getProjectGraphDataService()?.getExpandedTaskInputs(
-          selectedTarget,
-          selectedProjects
-        );
-      console.log('task inputs', taskInputsData);
-    }
-
-    fetchTaskInputs();
-  }, [selectedTarget, selectedProjects]);
-
   function selectTarget(target: string) {
     if (target === selectedTarget) return;
 

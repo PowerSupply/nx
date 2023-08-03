@@ -477,13 +477,21 @@ async function startServer(
     }
 
     if (sanitizePath === 'task-inputs.json') {
+      performance.mark('task input generation:start');
+
+      performance.mark('task input generation:end');
+
       const target = parsedUrl.searchParams.get('target');
       const projects = parsedUrl.searchParams.get('projects')?.split(',');
       res.writeHead(200, { 'Content-Type': 'application/json' });
       const inputs = await getExpandedTaskInputs(target, projects);
-      console.log('----- AFTER EXPANSION ------');
-      console.log(inputs);
       res.end(JSON.stringify(inputs));
+      const perf = performance.measure(
+        'task input generation',
+        'task input generation:start',
+        'task input generation:end'
+      );
+      console.log('getting inputs took' + perf.duration);
       return;
     }
 
@@ -768,9 +776,6 @@ async function getExpandedTaskInputs(
     for (let taskName in taskGraph.tasks) {
       const task = taskGraph.tasks[taskName];
       if (task.inputs) {
-        console.log('---- BEFORE EXPANSION -------');
-        console.log('inputs', task.inputs);
-
         expandedInputs[taskName] = expandInputs(
           task.inputs,
           currentDepGraphClientResponse.projects.find(
