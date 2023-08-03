@@ -35,7 +35,8 @@ export class FetchProjectGraphService implements ProjectGraphService {
   async getExpandedTaskInputs(
     taskId: string
   ): Promise<Record<string, string[]>> {
-    const request = new Request(`task-inputs.json?taskId=${taskId}}`, {
+    console.log('getting inputs from backend');
+    const request = new Request(`task-inputs.json?taskId=${taskId}`, {
       mode: 'no-cors',
     });
 

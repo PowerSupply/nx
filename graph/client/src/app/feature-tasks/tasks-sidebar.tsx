@@ -63,19 +63,6 @@ export function TasksSidebar() {
     [allProjectsWithTargetAndNoErrors, searchParams, isAllRoute]
   );
 
-  graphService.listen(async (event: GraphInteractionEvents) => {
-    if (event.type === 'TaskNodeClick') {
-      const inputs = await getProjectGraphDataService()?.getExpandedTaskInputs(
-        event.data.id
-      );
-      graphService.broadcast({
-        type: 'TaskInputsLoaded',
-        taskId: event.data.id,
-        inputs,
-      });
-    }
-  });
-
   function selectTarget(target: string) {
     if (target === selectedTarget) return;
 

@@ -32,10 +32,19 @@ export class GraphTooltipService {
           this.openTaskNodeTooltip(event.ref, {
             ...event.data,
           });
-          break;
-        case 'TaskInputsLoaded':
-          console.log(event);
-          this.openTaskNodeInputs(event.taskId, event.inputs);
+          if (graph.getTaskInputs) {
+            graph.getTaskInputs(event.data.id).then((inputs) => {
+              if (
+                this.currentTooltip.type === 'taskNode' &&
+                this.currentTooltip.props.id === event.data.id
+              ) {
+                this.openTaskNodeTooltip(event.ref, {
+                  ...event.data,
+                  inputs,
+                });
+              }
+            });
+          }
           break;
         case 'EdgeClick':
           const callback =
@@ -69,21 +78,6 @@ export class GraphTooltipService {
   openTaskNodeTooltip(ref: VirtualElement, props: TaskNodeTooltipProps) {
     this.currentTooltip = { type: 'taskNode', ref, props };
     this.broadcastChange();
-  }
-
-  openTaskNodeInputs(taskId: string, inputs: Record<string, string[]>) {
-    if (
-      this.currentTooltip.type === 'taskNode' &&
-      this.currentTooltip.props.id === taskId
-    ) {
-      this.currentTooltip = {
-        ...this.currentTooltip,
-        props: {
-          ...this.currentTooltip.props,
-          inputs: inputs,
-        },
-      };
-    }
   }
 
   openEdgeToolTip(ref: VirtualElement, props: ProjectEdgeNodeTooltipProps) {
