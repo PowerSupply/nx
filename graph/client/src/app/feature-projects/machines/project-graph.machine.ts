@@ -250,7 +250,7 @@ export const projectGraphMachine = createMachine<
       setGraph: assign((ctx, event) => {
         if (event.type !== 'setProjects' && event.type !== 'updateGraph')
           return;
-
+        console.log(ctx, event);
         ctx.projects = event.projects;
         ctx.dependencies = event.dependencies;
         ctx.fileMap = event.fileMap;

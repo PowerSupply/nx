@@ -452,7 +452,7 @@ async function startServer(
     // by limiting the path to current directory only
 
     const sanitizePath = basename(parsedUrl.pathname);
-
+    console.log('request for', sanitizePath);
     if (sanitizePath === 'project-graph.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(currentDepGraphClientResponse));
@@ -462,6 +462,16 @@ async function startServer(
     if (sanitizePath === 'task-graph.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(await createTaskGraphClientResponse()));
+      return;
+    }
+
+    if (sanitizePath === 'task-inputs.json') {
+      const target = parsedUrl.searchParams.get('target');
+      const projects = parsedUrl.searchParams.get('projects')?.split(',');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      const inputs = await getExpandedTaskInputs(target, projects);
+      console.log(inputs);
+      res.end(JSON.stringify(inputs));
       return;
     }
 
@@ -478,7 +488,7 @@ async function startServer(
     }
 
     let pathname = join(__dirname, '../../core/graph/', sanitizePath);
-
+    console.log('request for pathname', pathname);
     // if the file is not found or is a directory, return index.html
     if (!existsSync(pathname) || statSync(pathname).isDirectory()) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -720,6 +730,32 @@ function createTaskId(
   } else {
     return `${projectId}:${targetId}`;
   }
+}
+
+async function getExpandedTaskInputs(
+  target: string,
+  projects: string[]
+): Promise<Record<string, string[]>> {
+  const taskGraphs = await createTaskGraphClientResponse();
+  const expandedInputs: Record<string, string[]> = {};
+  projects.forEach((project) => {
+    const taskGraphId = `${project}:${target}`;
+    console.log(
+      'getting inputs for',
+      taskGraphId,
+      taskGraphs.taskGraphs[taskGraphId]
+    );
+    const taskGraph = taskGraphs.taskGraphs[taskGraphId];
+
+    for (let taskName in taskGraph.tasks) {
+      const task = taskGraph.tasks[taskName];
+      if (task.inputs) {
+        expandedInputs[taskName] = task.inputs;
+      }
+    }
+  });
+
+  return expandedInputs;
 }
 
 interface GraphJsonResponse {

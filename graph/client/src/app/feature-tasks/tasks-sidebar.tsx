@@ -13,15 +13,17 @@ import type {
 } from 'nx/src/command-line/graph/graph';
 /* eslint-enable @nx/enforce-module-boundaries */
 import { getGraphService } from '../machines/graph.service';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CheckboxPanel } from '../ui-components/checkbox-panel';
 
 import { Dropdown } from '@nx/graph/ui-components';
 import { ShowHideAll } from '../ui-components/show-hide-all';
 import { useCurrentPath } from '../hooks/use-current-path';
 import { createTaskName, useRouteConstructor } from '../util';
+import { getProjectGraphDataService } from '../hooks/get-project-graph-data-service';
 
 export function TasksSidebar() {
+  console.log('rerendering tasks sidebar');
   const graphService = getGraphService();
   const navigate = useNavigate();
   const params = useParams();
@@ -60,6 +62,25 @@ export function TasksSidebar() {
         : searchParams.get('projects')?.split(' ') ?? [],
     [allProjectsWithTargetAndNoErrors, searchParams, isAllRoute]
   );
+
+  const [taskInputs, setTaskInputs] = useState(null);
+
+  useEffect(() => {
+    // Replace this with your actual data fetching logic
+    async function fetchTaskInputs() {
+      if (!selectedTarget || !selectedProjects.length) {
+        return;
+      }
+      const taskInputsData =
+        await getProjectGraphDataService()?.getExpandedTaskInputs(
+          selectedTarget,
+          selectedProjects
+        );
+      console.log('task inputs', taskInputsData);
+    }
+
+    fetchTaskInputs();
+  }, [selectedTarget, selectedProjects]);
 
   function selectTarget(target: string) {
     if (target === selectedTarget) return;

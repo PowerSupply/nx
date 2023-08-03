@@ -228,6 +228,7 @@ export class GraphService {
     this.broadcast({ type: 'GraphRegenerated' });
 
     let elementsToSendToRender: CollectionReturnValue;
+    console.log('task event', event);
     switch (event.type) {
       case 'notifyTaskGraphSetProjects':
         this.taskTraversalGraph.setProjects(event.projects, event.taskGraphs);
