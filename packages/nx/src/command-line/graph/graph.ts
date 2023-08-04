@@ -5,7 +5,15 @@ import * as http from 'http';
 import * as minimatch from 'minimatch';
 import { URL } from 'node:url';
 import * as open from 'open';
-import { basename, dirname, extname, isAbsolute, join, parse } from 'path';
+import {
+  basename,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  parse,
+  relative,
+} from 'path';
 import { performance } from 'perf_hooks';
 import { readNxJson, workspaceLayout } from '../../config/configuration';
 import {
@@ -838,7 +846,7 @@ function expandInputs(
 
   const otherInputsExpanded = otherInputs.map((input) => {
     if (input === 'TsConfig') {
-      return getRootTsConfigPath();
+      return relative(workspaceRoot, getRootTsConfigPath());
     }
     if (input === 'ProjectConfiguration') {
       return currentDepGraphClientResponse.fileMap[project.name].find(
